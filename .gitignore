@@ -1,0 +1,12 @@
+# Build intermediates
+/build/
+*.class
+
+# OS / editor junk
+Thumbs.db
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Keep: lib/montoya-api-*.jar (needed by build.bat) and dist/*.jar (prebuilt extension)

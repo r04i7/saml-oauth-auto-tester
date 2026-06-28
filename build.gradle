@@ -1,0 +1,30 @@
+// Optional Gradle build. Run: gradle jar  ->  build/libs/saml-oauth-tester.jar
+// (build.bat needs no Gradle install and is the primary path.)
+plugins {
+    id 'java'
+}
+
+group = 'com.pentest'
+version = '1.0.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+    flatDir { dirs 'lib' }
+}
+
+dependencies {
+    // Provided by Burp at runtime — compile-only.
+    compileOnly 'net.portswigger.burp.extensions:montoya-api:2026.4'
+}
+
+jar {
+    archiveBaseName = 'saml-oauth-tester'
+    archiveVersion = ''
+    from('src/main/resources')
+}
