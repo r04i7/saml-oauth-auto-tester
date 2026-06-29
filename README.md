@@ -110,21 +110,85 @@ A new **“SAML/OAuth Tester”** tab appears, and the context-menu item is adde
 
 ---
 
-## How verdicts are decided
+## How verdicts are decided (response-diff + negative control)
 
-The classifier mirrors a human judgement on the replayed response:
+The verdict is reached the way an analyst reasons by hand: **tamper the request, then compare the
+response to the legitimate baseline.** For an integrity test (strip signature, forge NameID,
+`alg=none`, …) a properly-secured server *must* reject the manipulated message, so:
 
-- **Secure (rejected):** HTTP 400/401/403/5xx, or body contains rejection markers
-  (`invalid signature`, `access denied`, `invalid_grant`, `redirect_uri_mismatch`, …).
-- **Vulnerable (accepted):** success markers (`logout`, `dashboard`, `access_token`),
-  a session `Set-Cookie`, or a redirect to a non-login app resource — and, for redirect tests,
-  the **attacker host reflected** in the `Location`/body.
-- **Inconclusive:** couldn’t be classified — open the row and check in Repeater.
+- **tampered request rejected** (4xx, error markers) → **Secure** — even if the error page echoes
+  our payload back;
+- **the redirect / response changes to a login/error page** → **Secure** (the server treated the
+  forgery differently);
+- **the response is *unchanged* vs the valid baseline** (same status, same `Location`, ~same body)
+  → the server **accepted the forgery**. This is reported **Vulnerable** *only if* a **negative
+  control** — a deliberately-invalid message sent first — **was rejected**, proving the endpoint
+  actually validates. If even the bad control was accepted, the endpoint is ignoring the token, so
+  the result is **Inconclusive** instead (no false "Vulnerable");
+- **changed but not a clear rejection** → **Inconclusive**.
 
-These are heuristics (the same signals you read manually). Always confirm a Vulnerable finding by
-sending it to Repeater. Some checks have inherent caveats — e.g. SAML assertions are often
-single-use, so re-played baselines can fail for benign reasons; scope-escalation acceptance must
-be confirmed by inspecting the issued token’s scopes.
+For OAuth redirect tests, the proof of an open redirect is the **`Location` header** actually
+pointing at the attacker host — reflection in an error body never counts. Each finding shows the
+**Original** and **Attack** request/response side by side and is gated by the same negative control.
+
+The older absolute classifier is still used as a fallback when no baseline is available:
+
+- **Rejection dominates.** Any **HTTP 4xx/5xx**, or a rejection marker in the body
+  (`invalid signature`, `access denied`, `invalid_grant`, `redirect_uri_mismatch`, …) is reported
+  **Secure** — *even if the error page echoes our injected value back*. (This removes the classic
+  false positive where a `400 Bad Request` whose body repeats the bad `redirect_uri` was flagged
+  Vulnerable.)
+- **Open-redirect proof is the `Location` header, not the body.** A redirect test is only
+  **Vulnerable** when the response's `Location` header actually points at the attacker host
+  (authority or `@`-userinfo) — reflection inside an error body does **not** count.
+- **Baseline-aware.** Each target's original, untampered response is captured first. If a tampered
+  request produces an outcome **indistinguishable from that baseline** (same status, same redirect,
+  no new session cookie), the verdict is **Inconclusive**, not Vulnerable — because tampering
+  changed nothing observable. The **Original** and **Attack** request/response are shown side by
+  side so you can make the final call.
+- **Vulnerable (accepted):** a distinct success marker (`logout`, `dashboard`, `access_token`),
+  a freshly granted session `Set-Cookie`, or a redirect to a non-login app resource that the
+  baseline did **not** already produce.
+
+Always confirm a Vulnerable finding in Repeater. Some checks have inherent caveats — e.g. SAML
+assertions are often single-use, so replayed baselines can fail for benign reasons;
+scope-escalation acceptance must be confirmed by inspecting the issued token’s scopes.
+
+## New in this version
+
+- **Proxy auto-highlight.** SAML and OAuth/OIDC requests are painted **blue** in Proxy history as
+  they pass through (passive — never modifies traffic), with a note saying which protocol, so the
+  requests worth testing jump out.
+- **Original vs Attack panes.** Every finding shows the **Original** request/response and the
+  **Attack** request/response side by side.
+- **Separate SAML / OAuth.** Filter findings by **Category** (All / SAML / OAuth2.0), and force a
+  battery with **“Send to SAML Tester”** / **“Send to OAuth Tester”** in addition to auto-detect.
+- **SAML Decoder workbench** (SAML-Raider style). A **“SAML Decoder”** sub-tab and a
+  **“Send SAML to Decoder”** context item: decode a `SAMLRequest`/`SAMLResponse` (POST or Redirect
+  binding) to readable, pretty-printed XML, edit it by hand, then re-encode it for the original
+  binding to paste into Repeater.
+- **Inline decoder tab everywhere SAML appears.** A **“SAML (decoded)”** tab is added to Burp's
+  request editor (Proxy / Repeater / Intruder) for any request carrying a SAML message — view and
+  **edit the decoded XML in place**; edits are re-encoded on send. A test-case dropdown applies any
+  mutation and **“Send mutated → Repeater”** / **“Send ALL cases → Repeater”** queue the whole
+  battery for manual testing.
+- **Inline OAuth tab.** An **“OAuth (test cases)”** tab decodes any JWT (`id_token`,
+  `id_token_hint`, `assertion`, `access_token`) to readable JSON and offers the OAuth tampering
+  battery → Repeater the same way.
+- **Negative control.** Before judging, the tool sends a deliberately-invalid message; if the
+  endpoint accepts even that, "accepted" results are downgraded to Inconclusive to avoid false
+  positives.
+- **"Changes (highlighted)" view.** Selecting a finding shows the **original values on the left and
+  the attack values on the right, with every changed line highlighted** — decoded SAML XML for SAML
+  findings, request parameters otherwise — so you can eyeball exactly what was mutated and compare
+  it by hand before confirming.
+- **Burp Collaborator OOB confirmation.** When Collaborator is available, blind issues are
+  **confirmed out-of-band**: SAML **XXE** and **XSLT** point an external fetch at a Collaborator URL,
+  and OAuth **redirect_uri / request_uri SSRF** do the same. A real interaction turns the verdict
+  into a definitive **Vulnerable [OOB confirmed]**; if Collaborator is unavailable the tool falls
+  back to in-band heuristics.
+- **Separate SAML / OAuth context menu.** The combined "Send to SAML/OAuth Tester" item was removed —
+  right-click offers **"Send to SAML Tester"** and **"Send to OAuth 2.0 Tester"** directly.
 
 ---
 

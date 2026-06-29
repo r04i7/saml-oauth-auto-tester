@@ -28,7 +28,17 @@ mkdir "%OUT%"
 if not exist "%DIST%" mkdir "%DIST%"
 
 echo [*] Collecting sources...
-dir /s /b "%ROOT%src\main\java\*.java" > "%ROOT%build\sources.txt"
+REM The project folder may contain spaces, so each path must be quoted in the javac @argfile.
+REM javac argfiles also treat backslash as an escape, so we emit forward slashes (valid on Windows).
+dir /s /b "%ROOT%src\main\java\*.java" > "%ROOT%build\sources_raw.txt"
+if exist "%ROOT%build\sources.txt" del "%ROOT%build\sources.txt"
+setlocal enabledelayedexpansion
+for /f "usebackq delims=" %%F in ("%ROOT%build\sources_raw.txt") do (
+  set "p=%%F"
+  set "p=!p:\=/!"
+  echo "!p!">> "%ROOT%build\sources.txt"
+)
+endlocal
 
 echo [*] Compiling...
 "%JDK%\bin\javac.exe" -encoding UTF-8 -cp "%API%" -d "%OUT%" @"%ROOT%build\sources.txt"
